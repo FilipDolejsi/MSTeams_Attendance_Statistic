@@ -1,92 +1,150 @@
 package fildol.MSTeamsAttendance;
 
+import static fildol.MSTeamsAttendance.DateTimeParser.parseDateTime;
+
 import java.io.BufferedReader;
 import java.io.FileReader;
 import java.io.IOException;
+import java.nio.CharBuffer;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
-import java.util.ArrayList;
-import java.util.Iterator;
-import java.util.List;
+import java.time.LocalDateTime;
+import java.util.HashMap;
+import java.util.Map;
 import java.util.StringTokenizer;
 
 public class ReportParser {
 
-  final MSTeamsMeetingAttendanceParser meetingDurationParser =
-      new MSTeamsMeetingAttendanceParser();
-  final List<Participant> participants = new ArrayList<>();
+  private static final String MEETING_SUMMARY = "Meeting Summary";
+  private static final String TAB = "\t";
+  private final Map<String, Participant> participants = new HashMap<>();
   final Path csvFile;
-  /**
-   * percentage of the meeting duration that a participant needs to be counted in the sum (e.g. 10%
-   * = 0.1)
-   */
-  final double requiredDurationFraction;
 
-  public ReportParser(Path csvFile, double requiredDurationFraction) {
+  private Duration meetingDuration;
+  private int totalNumberOfParticipants;
+  private String meetingTitle;
+  private LocalDateTime meetingStartTime;
+  private LocalDateTime meetingEndTime;
+  private String meetingId;
+
+  public ReportParser(Path csvFile) {
     this.csvFile = csvFile;
-    this.requiredDurationFraction = requiredDurationFraction;
   }
 
-  public void buildParticipant() {
-    String stringLine;
-    String endTime;
-    String meetingDuration = null;
-    String startTime = null;
-    int rowCounter = 1;
+  public void buildParticipant() throws IOException {
     try (BufferedReader bufferedReader =
         new BufferedReader(new FileReader(csvFile.toFile(), StandardCharsets.UTF_16LE))) {
-      while ((stringLine = bufferedReader.readLine()) != null) {
-        boolean found = false;
-        String[] employee = stringLine.split(Meeting.TAB);
-        StringTokenizer stringTokenizer = new StringTokenizer(stringLine, Meeting.TAB);
-        if (stringTokenizer.hasMoreTokens()) {
-          stringTokenizer.nextToken();
-        }
-        if (rowCounter == 4) {
-          stringTokenizer.nextToken(", ");
-          startTime = stringTokenizer.nextToken(", ") + " " + stringTokenizer.nextToken();
-        }
-        if (rowCounter == 5) {
-          stringTokenizer.nextToken(", ");
-          endTime = stringTokenizer.nextToken(", ") + " " + stringTokenizer.nextToken();
-          meetingDuration = meetingDurationParser.formatMeetingDuration(startTime, endTime);
-        }
-        if (rowCounter >= 9 && stringTokenizer.countTokens() > 5) {
-          for (Participant p : participants) {
-            if (employee[6].equals(p.getId())) {
-              p.setDuration(Meeting.addDuration(p.getDuration(), employee[3]));
-              found = true;
-            }
-          }
-          if (!found) {
-            StringTokenizer sT = new StringTokenizer(stringLine, Meeting.TAB);
-            participants.add(
-                new Participant(
-                    sT.nextToken(),
-                    sT.nextToken(),
-                    sT.nextToken(),
-                    sT.nextToken(),
-                    sT.nextToken(),
-                    sT.nextToken(),
-                    sT.nextToken()));
-          }
-        }
-        rowCounter++;
-      }
-    } catch (IOException e) {
-      e.printStackTrace();
+
+      // parse the report headers
+      final HashMap<String, String> headers = parseHeader(bufferedReader);
+      this.totalNumberOfParticipants =
+          Integer.parseInt(headers.get("Total Number of Participants"));
+      this.meetingTitle = headers.get("Meeting Title");
+      this.meetingStartTime = parseDateTime(headers.get("Meeting Start Time"));
+      this.meetingEndTime = parseDateTime(headers.get("Meeting End Time"));
+      this.meetingDuration =
+          DateTimeParser.computeMeetingDuration(meetingStartTime, meetingEndTime);
+      this.meetingId = headers.get("Meeting Id");
+
+      // parse the table of participants
+      parseTable(bufferedReader);
     }
-    Iterator<Participant> itr = participants.iterator();
-    while (itr.hasNext()) {
-      Participant p = itr.next();
-      String duration = Meeting.addDuration(p.getDuration(), "0d 0h 0m 0s");
-      int[] placeholder = new int[4];
-      Meeting.add(duration, placeholder);
-      String[] meetDuration = meetingDuration.split(" ");
-      if (meetingDurationParser.timeToInt(placeholder)
-          < requiredDurationFraction * Integer.parseInt(meetDuration[0])) {
-        itr.remove();
+  }
+
+  private CharBuffer decodeUTF16LE(String line) {
+    return StandardCharsets.UTF_16.decode(StandardCharsets.UTF_16LE.encode(line));
+  }
+
+  private CharBuffer decodeUTF16(String line) {
+    return StandardCharsets.UTF_16.decode(StandardCharsets.UTF_16.encode(line));
+  }
+
+  private HashMap<String, String> parseHeader(BufferedReader bufferedReader) throws IOException {
+    String line;
+
+    if ((line = bufferedReader.readLine()) != null) {
+      if (!decodeUTF16LE(line).equals(decodeUTF16(MEETING_SUMMARY))) {
+        throw new IllegalArgumentException(
+            "First row should contain " + MEETING_SUMMARY + ", but was " + line);
       }
     }
+
+    final HashMap<String, String> keyValueMap = new HashMap<>();
+
+    while ((line = bufferedReader.readLine()) != null) {
+
+      if (line.trim().isEmpty()) {
+        // done reading the header
+        return keyValueMap;
+      }
+
+      StringTokenizer stringTokenizer = new StringTokenizer(line, TAB);
+      if (stringTokenizer.countTokens() == 2) {
+        final String key = stringTokenizer.nextToken();
+        final String value = stringTokenizer.nextToken();
+
+        keyValueMap.put(key, value);
+      } else {
+        throw new IllegalArgumentException("Invalid header row: " + line);
+      }
+    }
+
+    return keyValueMap;
+  }
+
+  private void parseTable(BufferedReader bufferedReader) throws IOException {
+    String line;
+
+    final HashMap<String, Integer> tableHeaders = new HashMap<>();
+
+    if ((line = bufferedReader.readLine()) != null) {
+
+      final String[] headers = line.split(TAB);
+
+      for (int i = 0; i < headers.length; i++) {
+        tableHeaders.put(headers[i], i);
+      }
+    }
+
+    while ((line = bufferedReader.readLine()) != null) {
+
+      final Participant participant = parseParticipant(line, tableHeaders);
+      final Participant matchingParticipant = participants.get(participant.getId());
+
+      if (matchingParticipant != null) {
+        matchingParticipant.getDuration().add(participant.getDuration());
+      } else {
+        participants.put(participant.getId(), participant);
+      }
+    }
+  }
+
+  private Participant parseParticipant(
+      String participantLine, HashMap<String, Integer> tableHeaders) {
+    final String[] values = participantLine.split(TAB);
+    return new Participant(
+        values[tableHeaders.get("Full Name")],
+        parseDateTime(values[tableHeaders.get("Join Time")]),
+        parseDateTime(values[tableHeaders.get("Leave Time")]),
+        new Duration(values[tableHeaders.get("Duration")]),
+        values[tableHeaders.get("Email")],
+        values[tableHeaders.get("Role")],
+        values[tableHeaders.get("Participant ID (UPN)")]);
+  }
+
+  public Map<String, Participant> getParticipants() {
+    return participants;
+  }
+
+  public Duration getMeetingDuration() {
+    return this.meetingDuration;
+  }
+
+  public int getTotalNumberOfParticipants() {
+    return totalNumberOfParticipants;
+  }
+
+  public String getMeetingTitle() {
+    return meetingTitle;
   }
 }

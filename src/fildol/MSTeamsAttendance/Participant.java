@@ -1,16 +1,18 @@
 package fildol.MSTeamsAttendance;
 
+import java.time.LocalDateTime;
+
 /** Meeting participant. */
 public class Participant {
     private final String fullName;
-    private final String joinTime;
-    private final String leaveTime;
-    private String duration;
+    private final LocalDateTime joinTime;
+    private final LocalDateTime leaveTime;
+    private final Duration duration;
     private final String email;
     private final String role;
     private final String id;
 
-    public Participant(String fullName, String joinTime, String leaveTime, String duration, String email, String role, String id){
+    public Participant(String fullName, LocalDateTime joinTime, LocalDateTime leaveTime, Duration duration, String email, String role, String id){
         this.fullName = fullName;
         this.joinTime = joinTime;
         this.leaveTime = leaveTime;
@@ -24,19 +26,16 @@ public class Participant {
         return fullName;
     }
 
-    public String getJoinTime() {
+    public LocalDateTime getJoinTime() {
         return joinTime;
     }
 
-    public String getLeaveTime() {
+    public LocalDateTime getLeaveTime() {
         return leaveTime;
     }
 
-    public String getDuration() {
+    public Duration getDuration() {
         return duration;
-    }
-    public void setDuration(String duration) {
-        this.duration = duration;
     }
 
     public String getEmail() {

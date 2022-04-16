@@ -1,13 +1,14 @@
 package fildol.MSTeamsAttendance;
 
+/** Meeting participant. */
 public class Participant {
-    private String fullName;
-    private String joinTime;
-    private String leaveTime;
+    private final String fullName;
+    private final String joinTime;
+    private final String leaveTime;
     private String duration;
-    private String email;
-    private String role;
-    private String id;
+    private final String email;
+    private final String role;
+    private final String id;
 
     public Participant(String fullName, String joinTime, String leaveTime, String duration, String email, String role, String id){
         this.fullName = fullName;
@@ -23,30 +24,17 @@ public class Participant {
         return fullName;
     }
 
-    public void setFullName(String fullName) {
-        this.fullName = fullName;
-    }
-
     public String getJoinTime() {
         return joinTime;
-    }
-
-    public void setJoinTime(String joinTime) {
-        this.joinTime = joinTime;
     }
 
     public String getLeaveTime() {
         return leaveTime;
     }
 
-    public void setLeaveTime(String leaveTime) {
-        this.leaveTime = leaveTime;
-    }
-
     public String getDuration() {
         return duration;
     }
-
     public void setDuration(String duration) {
         this.duration = duration;
     }
@@ -55,23 +43,11 @@ public class Participant {
         return email;
     }
 
-    public void setEmail(String email) {
-        this.email = email;
-    }
-
     public String getRole() {
         return role;
     }
 
-    public void setRole(String role) {
-        this.role = role;
-    }
-
     public String getId() {
         return id;
-    }
-
-    public void setId(String id) {
-        this.id = id;
     }
 }
